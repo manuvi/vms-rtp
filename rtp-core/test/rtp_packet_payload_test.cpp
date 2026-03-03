@@ -1,4 +1,4 @@
-#include <vms-rtp/RtpPacket.h>
+#include <rtp-core/RtpPacket.h>
 
 #include <array>
 #include <cstdlib>

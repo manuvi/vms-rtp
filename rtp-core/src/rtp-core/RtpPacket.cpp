@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: LGPL-2.1-only
  */
 
-#include <vms-rtp/RtpPacket.h>
+#include <rtp-core/RtpPacket.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -14,7 +14,7 @@
 #include <span>
 #include <stdexcept>
 
-#include <vms-rtp/helper.h>
+#include <rtp-core/helper.h>
 
 namespace vms::rtp {
 

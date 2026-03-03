@@ -1,4 +1,4 @@
-#include <vms-rtp/helper.h>
+#include <rtp-core/helper.h>
 
 #include <array>
 #include <cstddef>

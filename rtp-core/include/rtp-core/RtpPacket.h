@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: LGPL-2.1-only
  */
 
-#include <vms-rtp/RtpHeader.h>
+#include <rtp-core/RtpHeader.h>
 
 #include <cstddef>
 #include <span>

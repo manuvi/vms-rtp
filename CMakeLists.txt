@@ -2,8 +2,14 @@ cmake_minimum_required(VERSION 3.16)
 
 project(vms_rtp VERSION 0.1.0 LANGUAGES CXX)
 
-option(VMS_RTP_BUILD_SHARED "Build vms-rtp as a shared library" ON)
+option(VMS_RTP_BUILD_SHARED "Build RTP libraries as shared libraries" ON)
+option(VMS_RTP_BUILD_CORE "Build rtp-core library" ON)
+option(VMS_RTP_BUILD_NET "Build rtp-net library" ON)
 option(VMS_RTP_ENABLE_COVERAGE "Enable code coverage instrumentation and report target" OFF)
+
+if(VMS_RTP_BUILD_NET AND NOT VMS_RTP_BUILD_CORE)
+    message(FATAL_ERROR "rtp-net depends on rtp-core: set VMS_RTP_BUILD_CORE=ON or VMS_RTP_BUILD_NET=OFF.")
+endif()
 
 if(VMS_RTP_ENABLE_COVERAGE)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -14,11 +20,23 @@ if(VMS_RTP_ENABLE_COVERAGE)
     endif()
 endif()
 
-add_subdirectory(src)
+if(VMS_RTP_BUILD_CORE)
+    add_subdirectory(rtp-core)
+endif()
+
+if(VMS_RTP_BUILD_NET)
+    add_subdirectory(rtp-net)
+endif()
 
 include(CTest)
 if(BUILD_TESTING)
-    add_subdirectory(test)
+    if(VMS_RTP_BUILD_CORE)
+        add_subdirectory(rtp-core/test)
+    endif()
+
+    if(VMS_RTP_BUILD_NET)
+        add_subdirectory(rtp-net/test)
+    endif()
 endif()
 
 if(VMS_RTP_ENABLE_COVERAGE)
