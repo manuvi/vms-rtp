@@ -176,5 +176,105 @@ int main()
         expect(view.last_error() == PacketError::buffer_too_small, "buffer_too_small expected");
     }
 
+    // per-field setters: version, flags, payload type
+    {
+        std::array<std::byte, 20> pkt{};
+        pkt[0] = std::byte{0x80}; // V=2, P=0, X=0, CC=0
+        pkt[1] = std::byte{0x60}; // M=0, PT=96
+        PacketView view{std::span<std::byte>(pkt)};
+
+        expect(view.set_version(3), "set_version should accept value in range");
+        expect(view.header().version == 3, "set_version should update RTP version bits");
+
+        expect(!view.set_version(4), "set_version should reject invalid version");
+        expect(view.last_error() == PacketError::invalid_version, "invalid_version expected from set_version");
+
+        expect(view.set_padding(true), "set_padding(true) should succeed");
+        expect(view.header().padding == true, "set_padding(true) should set padding bit");
+
+        expect(view.set_padding(false), "set_padding(false) should succeed");
+        expect(view.header().padding == false, "set_padding(false) should clear padding bit");
+
+        expect(view.set_extension(true), "set_extension(true) should succeed");
+        expect(view.header().extension == true, "set_extension(true) should set extension bit");
+
+        expect(view.set_extension(false), "set_extension(false) should succeed");
+        expect(view.header().extension == false, "set_extension(false) should clear extension bit");
+
+        expect(view.set_marker(true), "set_marker(true) should succeed");
+        expect(view.header().marker == true, "set_marker(true) should set marker bit");
+
+        expect(view.set_marker(false), "set_marker(false) should succeed");
+        expect(view.header().marker == false, "set_marker(false) should clear marker bit");
+
+        expect(view.set_payload_type(127), "set_payload_type should accept max valid value");
+        expect(view.header().payload_type == 127, "set_payload_type should update payload type bits");
+
+        expect(!view.set_payload_type(128), "set_payload_type should reject invalid value");
+        expect(view.last_error() == PacketError::invalid_payload_type, "invalid_payload_type expected");
+    }
+
+    // per-field setters: sequence/timestamp/ssrc
+    {
+        std::array<std::byte, 16> pkt{};
+        pkt[0] = std::byte{0x80};
+        pkt[1] = std::byte{0x60};
+        PacketView view{std::span<std::byte>(pkt)};
+
+        expect(view.set_sequence(0xBEEF), "set_sequence should succeed");
+        expect(view.set_timestamp(0x01020304u), "set_timestamp should succeed");
+        expect(view.set_ssrc(0xA1A2A3A4u), "set_ssrc should succeed");
+
+        const RtpHeader h = view.header();
+        expect(h.sequence == 0xBEEFu, "set_sequence should update sequence");
+        expect(h.timestamp == 0x01020304u, "set_timestamp should update timestamp");
+        expect(h.ssrc == 0xA1A2A3A4u, "set_ssrc should update ssrc");
+    }
+
+    // add/remove CSRC
+    {
+        std::array<std::byte, 24> pkt{};
+        pkt[0] = std::byte{0x80}; // V=2, CC=0
+        pkt[1] = std::byte{0x60};
+        PacketView view{std::span<std::byte>(pkt)};
+
+        expect(view.add_csrc(0x11111111u), "add_csrc first should succeed");
+        expect(view.add_csrc(0x22222222u), "add_csrc second should succeed");
+
+        RtpHeader h = view.header();
+        expect(h.csrc_count == 2, "add_csrc should increment csrc_count");
+        expect(h.csrc.size() == 2, "add_csrc should extend csrc vector");
+        expect(h.csrc[0] == 0x11111111u, "first CSRC mismatch after add_csrc");
+        expect(h.csrc[1] == 0x22222222u, "second CSRC mismatch after add_csrc");
+
+        expect(view.remove_csrc(0x11111111u), "remove_csrc should succeed for existing value");
+        h = view.header();
+        expect(h.csrc_count == 1, "remove_csrc should decrement csrc_count");
+        expect(h.csrc.size() == 1, "remove_csrc should shrink csrc vector");
+        expect(h.csrc[0] == 0x22222222u, "remove_csrc should shift remaining entries");
+    }
+
+    // remove CSRC from empty list must fail
+    {
+        std::array<std::byte, 12> pkt{};
+        pkt[0] = std::byte{0x80}; // CC=0
+        pkt[1] = std::byte{0x60};
+        PacketView view{std::span<std::byte>(pkt)};
+
+        expect(!view.remove_csrc(0x11111111u), "remove_csrc should fail on empty list");
+        expect(view.last_error() == PacketError::csrc_size_mismatch, "csrc_size_mismatch expected on empty remove");
+    }
+
+    // setters must fail on const packet view
+    {
+        std::array<std::byte, 12> pkt{};
+        pkt[0] = std::byte{0x80};
+        pkt[1] = std::byte{0x60};
+        PacketView view{std::span<const std::byte>(pkt)};
+
+        expect(!view.set_marker(true), "set_marker should fail for const packet");
+        expect(view.last_error() == PacketError::packet_const, "packet_const expected for const setter");
+    }
+
     return 0;
 }

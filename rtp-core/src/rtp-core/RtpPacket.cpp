@@ -135,9 +135,9 @@ bool PacketView::set_header(const RtpHeader& header) noexcept
     if (!ensure_mutable()) return false;
 
     // Validate user-supplied fields.
-    if (header.version > 3) return fail(PacketError::invalid_version);
-    if (header.csrc_count > 15) return fail(PacketError::invalid_csrc_count);
-    if (header.payload_type > 127) return fail(PacketError::invalid_payload_type);
+    if (header.version > kMaxVersion) return fail(PacketError::invalid_version);
+    if (header.csrc_count > kMaxCSRC) return fail(PacketError::invalid_csrc_count);
+    if (header.payload_type > kMaxPayloadType) return fail(PacketError::invalid_payload_type);
     if (header.csrc.size() != header.csrc_count) return fail(PacketError::csrc_size_mismatch);
 
     // Ensure destination buffer can hold fixed header + CSRC list.
@@ -184,6 +184,148 @@ bool PacketView::set_payload(std::span<const std::byte> data) noexcept
     // Copy payload bytes in-place.
     std::copy(data.begin(), data.end(), buf_.begin() + head_size);
     clear_error();
+    return true;
+}
+
+bool PacketView::set_version(std::uint8_t value) noexcept
+{
+    if (!ensure_mutable()) return false;
+    if (value > kMaxVersion) return fail(PacketError::invalid_version);
+
+    std::uint8_t b0 = std::to_integer<std::uint8_t>(buf_[0]);
+    
+    b0 &= 0x3F;
+    b0 |= (( value   << 6 ) & 0xC0);
+    buf_[0] = static_cast<std::byte>(b0);
+
+    return true;
+}
+
+bool PacketView::set_padding(bool value) noexcept
+{
+    if (!ensure_mutable()) return false;
+
+    std::uint8_t b0 = std::to_integer<std::uint8_t>(buf_[0]);
+    
+    b0 = value ? b0 | 0x20 : b0 & 0xDF;
+    buf_[0] = static_cast<std::byte>(b0);
+
+    return true;
+}
+
+bool PacketView::set_extension(bool value) noexcept
+{
+    if (!ensure_mutable()) return false;
+
+    std::uint8_t b0 = std::to_integer<std::uint8_t>(buf_[0]);
+    
+    b0 = value ? b0 | 0x10 : b0 & 0xEF;
+    buf_[0] = static_cast<std::byte>(b0);
+
+    return true;
+}
+
+bool PacketView::set_marker(bool value) noexcept
+{
+    if (!ensure_mutable()) return false;
+
+    std::uint8_t b1 = std::to_integer<std::uint8_t>(buf_[1]);
+    
+    b1 = value ? b1 | 0x80 : b1 & 0x7F;
+    buf_[1] = static_cast<std::byte>(b1);
+
+    return true;
+}
+
+bool PacketView::set_payload_type(std::uint8_t value) noexcept
+{
+    if (!ensure_mutable()) return false;
+    if (value > kMaxPayloadType) return fail(PacketError::invalid_payload_type);
+
+    std::uint8_t b1 = std::to_integer<std::uint8_t>(buf_[1]);
+    b1 &= 0x80;
+    b1 |= value & 0x7F;
+    buf_[1] = static_cast<std::byte>(b1);
+
+    return true;
+}
+
+bool PacketView::set_sequence(std::uint16_t value) noexcept
+{
+    if (!ensure_mutable()) return false;
+
+    if (!write_u16_be(buf_, 2, value)) return fail(PacketError::buffer_too_small);
+    return true;
+}
+
+bool PacketView::set_timestamp(std::uint32_t value) noexcept
+{
+    if (!ensure_mutable()) return false;
+
+    if (!write_u32_be(buf_, 4, value)) return fail(PacketError::buffer_too_small);
+    return true;
+}
+
+bool PacketView::set_ssrc(std::uint32_t value) noexcept
+{
+    if (!ensure_mutable()) return false;
+
+    if (!write_u32_be(buf_, 8, value)) return fail(PacketError::buffer_too_small);
+
+    return true;
+}
+
+bool PacketView::add_csrc(std::uint32_t value) noexcept
+{
+    if (!ensure_mutable()) return false;
+
+    std::uint8_t b0 = std::to_integer<std::uint8_t>(buf_[0]);
+    std::uint8_t csrc_count = b0 & 0x0F;
+
+    if (csrc_count >= kMaxCSRC) return fail(PacketError::csrc_size_mismatch);
+    if (!write_u32_be(buf_, 12 + 4 * csrc_count, value)) return fail(PacketError::buffer_too_small);
+
+    csrc_count ++;
+    b0 &= 0xF0;
+    b0 |= csrc_count & 0x0F;
+    buf_[0] = static_cast<std::byte>(b0);
+
+    return true;
+}
+
+bool PacketView::remove_csrc(std::uint32_t value) noexcept
+{
+    if (!ensure_mutable()) return false;
+
+    std::uint8_t b0 = std::to_integer<std::uint8_t>(buf_[0]);
+    std::uint8_t csrc_count = b0 & 0x0F;
+
+    if (csrc_count == 0) return fail(PacketError::csrc_size_mismatch);
+    
+    bool deleted = false;
+    for ( std::size_t i = 0 ; i < csrc_count ; i++ ) {        
+        std::uint32_t csrc;
+        read_u32_be(buf_, 12 + 4 * i, csrc);
+
+        if ( csrc == value ) {
+            // remove
+            for ( std::size_t j = i ; j < csrc_count-1 ; j++ )
+            {
+                std::uint32_t replace_csrc;
+                read_u32_be(buf_, 12 + 4 * (j+1), replace_csrc);
+                write_u32_be(buf_, 12 + 4 * j, replace_csrc);
+            }
+            deleted = true;
+        }
+
+        if ( deleted ) break;
+    }
+
+    csrc_count --;
+    b0 &= 0xF0;
+    b0 |= csrc_count & 0x0F;
+    buf_[0] = static_cast<std::byte>(b0);
+
     return true;
 }
 
