@@ -1,6 +1,7 @@
 # Keep this list explicit: when you add/remove a test file, update it here.
 set(RTP_CORE_TEST_SOURCES
     helper_test.cpp
+    random_test.cpp
     rtp_packet_payload_test.cpp
     rtp_packet_setters_test.cpp
 )
